@@ -65,12 +65,17 @@ class swift():
 		#-----------------------Add other required variables for pid here ----------------------------------------------
 
 
+		self.alt_error =0.0  # variable for calculating errors in PID
+		self.prev_alt_error = 0.0
+		self.sum_alt_error = 0.0
 
-
-
-
-
-
+		self.min_Throttle = 1000
+		self.max_Throttle = 2000
+		
+		
+		
+		
+		
 
 		# Hint : Add variables for storing previous errors in each axis, like self.prev_error = [0,0,0] where corresponds to [pitch, roll, throttle]		#		 Add variables for limiting the values like self.max_values = [2000,2000,2000] corresponding to [roll, pitch, throttle]
 		#													self.min_values = [1000,1000,1000] corresponding to [pitch, roll, throttle]
@@ -78,7 +83,8 @@ class swift():
 		#----------------------------------------------------------------------------------------------------------
 
 		# # This is the sample time in which you need to run pid. Choose any time which you seem fit. Remember the stimulation step time is 50 ms
-		# self.sample_time = 0.060 # in seconds
+		
+		self.sample_time = 0.03333 # in seconds
 
 
 
@@ -88,7 +94,7 @@ class swift():
 		self.command_pub = rospy.Publisher('/drone_command', swift_msgs, queue_size=1)
 		#------------------------Add other ROS Publishers here-----------------------------------------------------
 
-
+		self.alt_error_pub = rospy.Publisher('/alt_error',Float64, queue_size=1)
 
 
 
@@ -135,10 +141,15 @@ class swift():
 	# The function gets executed each time when /whycon node publishes /whycon/poses 
 	def whycon_callback(self,msg):
 		self.drone_position[0] = msg.poses[0].position.x
+		
+		
+		
 
 		#--------------------Set the remaining co-ordinates of the drone from msg----------------------------------------------
 
-
+		self.drone_position[1] = msg.poses[0].position.y
+		self.drone_position[2] = msg.poses[0].position.z
+		
 
 	
 		#---------------------------------------------------------------------------------------------------------------
@@ -186,10 +197,21 @@ class swift():
 
 
 
+		self.alt_error = (self.setpoint [2] - self.drone_position[2]) #error for z axis
 
-
-
-
+		
+		self.cmd.rcThrottle = int(1550 + self.alt_error * self.Kp[2] - (self.alt_error - self.prev_alt_error)*self.Kd[2] + self.sum_alt_error* self.Ki[2])
+		
+		if self.cmd.rcThrottle > 2000 :
+		     self.cmd.rcThrottle = 2000
+		    
+		if self.cmd.rcThrottle < 1000 :
+		     self.cmd.rcThrottle = 1000    
+		
+		self.perv_alt_error = self.alt_error
+		
+		self.sum_alt_error = self.sum_alt_error + self.alt_error
+		     
 
 
 
@@ -200,9 +222,7 @@ class swift():
 
 	#------------------------------------------------------------------------------------------------------------------------
 		self.command_pub.publish(self.cmd)
-		
-
-
+		self.alt_error_pub.publish(self.alt_error)
 
 
 
@@ -211,7 +231,7 @@ class swift():
 if __name__ == '__main__':
 
 	swift_drone = swift()
-	r = rospy.Rate() #specify rate in Hz based upon your desired PID sampling time, i.e. if desired sample time is 33ms specify rate as 30Hz
+	r = rospy.Rate(30) #specify rate in Hz based upon your desired PID sampling time, i.e. if desired sample time is 33ms specify rate as 30Hz
 	while not rospy.is_shutdown():
 		swift_drone.pid()
 		r.sleep()
